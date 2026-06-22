@@ -48,4 +48,7 @@ if(BUILD_TESTING)
         target_link_libraries(${test_name}_test PRIVATE news_core)
         add_test(NAME ${test_name}_test COMMAND ${test_name}_test)
     endforeach()
+
+    target_sources(integration_test PRIVATE client/news_client.cc)
+    target_include_directories(integration_test PRIVATE client)
 endif()

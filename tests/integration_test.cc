@@ -1,5 +1,8 @@
 #include "news/session.h"
+#include "news_client.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -9,7 +12,9 @@
 #include <cstddef>
 #include <vector>
 
-int main() {
+namespace {
+
+void TestSessionIo() {
   std::array<int, 2> sockets{-1, -1};
   const auto created =
       ::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0,
@@ -47,5 +52,42 @@ int main() {
   assert(std::ranges::equal(output, input));
 
   ::close(sockets[1]);
+}
+
+void TestClientConnect() {
+  const int listener_fd =
+      ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  assert(listener_fd >= 0);
+
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_port = 0;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+  const auto bound = ::bind(
+      listener_fd, reinterpret_cast<const sockaddr*>(&address),
+      sizeof(address));
+  assert(bound == 0);
+  assert(::listen(listener_fd, 1) == 0);
+
+  socklen_t address_size = sizeof(address);
+  assert(::getsockname(listener_fd, reinterpret_cast<sockaddr*>(&address),
+                       &address_size) == 0);
+
+  news::NewsClient client("127.0.0.1", ntohs(address.sin_port));
+  assert(client.Connect());
+
+  const int client_fd = ::accept(listener_fd, nullptr, nullptr);
+  assert(client_fd >= 0);
+
+  ::close(client_fd);
+  ::close(listener_fd);
+}
+
+}  // namespace
+
+int main() {
+  TestSessionIo();
+  TestClientConnect();
   return 0;
 }
