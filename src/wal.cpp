@@ -1,0 +1,1 @@
+#include "news/wal.hpp"
