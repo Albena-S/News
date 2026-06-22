@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(news_core
-    src/config.cc
+    src/byte_buffer.cc
     src/epoll_server.cc
     src/protocol.cc
     src/replay_ring.cc
