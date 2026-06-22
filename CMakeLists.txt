@@ -34,7 +34,10 @@ endif()
 add_executable(news_server src/server_main.cc)
 target_link_libraries(news_server PRIVATE news_core)
 
-add_executable(news_client client/client_main.cc)
+add_executable(news_client
+    client/client_main.cc
+    client/news_client.cc
+)
 target_link_libraries(news_client PRIVATE news_core)
 
 include(CTest)
