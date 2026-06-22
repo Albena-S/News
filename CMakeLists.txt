@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(news_core
+    src/authenticator.cc
     src/byte_buffer.cc
     src/epoll_server.cc
     src/protocol.cc
@@ -43,10 +44,13 @@ target_link_libraries(news_client PRIVATE news_core)
 include(CTest)
 
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS protocol wal replay_ring integration)
+    foreach(test_name IN ITEMS authenticator protocol wal replay_ring integration)
         add_executable(${test_name}_test tests/${test_name}_test.cc)
         target_link_libraries(${test_name}_test PRIVATE news_core)
         add_test(NAME ${test_name}_test COMMAND ${test_name}_test)
+        set_tests_properties(${test_name}_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
     endforeach()
 
     target_sources(integration_test PRIVATE client/news_client.cc)

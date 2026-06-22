@@ -21,7 +21,13 @@ The port and IPv4 bind address can be overridden:
 ```
 
 Press `Ctrl+C` for an orderly shutdown. The current networking milestone accepts
-and drains client connections; binary protocol handling is the next layer.
+client connections and handles the simplified authentication and subscription
+frames; news publishing is the next layer.
+
+The demo client authenticates with the user from `config/users.conf.example`.
+Passwords are stored as a small deterministic demo hash so the example does not
+keep plaintext passwords in the config file. A production version should use TLS
+and a proper slow salted password hash.
 
 ## Style
 

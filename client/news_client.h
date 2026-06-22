@@ -12,6 +12,7 @@ class NewsClient {
   ~NewsClient();
 
   bool Connect();
+  bool Authenticate(const std::string& username, const std::string& password);
   bool Subscribe(std::uint64_t last_seen_sequence);
   void ReceiveNews();
 

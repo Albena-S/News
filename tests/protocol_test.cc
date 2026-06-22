@@ -5,6 +5,15 @@
 #include <vector>
 
 int main() {
+  const auto auth_payload = news::EncodeAuthRequest(
+      "demo", " password: with spaces ");
+  const auto credentials = news::DecodeAuthRequest(auth_payload);
+  assert(credentials.username == "demo");
+  assert(credentials.password == " password: with spaces ");
+
+  const auto accepted_payload = news::EncodeAuthResult(true);
+  assert(news::DecodeAuthResult(accepted_payload));
+
   const std::vector<std::byte> payload{
       std::byte{'n'},
       std::byte{'e'},

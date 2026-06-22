@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <unordered_map>
 
+#include "news/authenticator.h"
 #include "news/config.h"
 #include "news/session.h"
 
@@ -28,11 +29,13 @@ class EpollServer {
 
   void AcceptConnections();
   void HandleSessionEvent(int fd, std::uint32_t events);
+  void HandleReceivedFrame(Session& session);
   void HandleSignal();
   void CloseSession(int fd, const char* reason);
   void CloseAll();
 
   ServerConfig config_;
+  Authenticator authenticator_;
   std::unordered_map<int, Session> sessions_;
   int listener_fd_{-1};
   int epoll_fd_{-1};

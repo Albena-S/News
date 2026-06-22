@@ -6,6 +6,9 @@ int main() {
   if (!client.Connect()) {
     return 1;
   }
+  if (!client.Authenticate("demo", "demo")) {
+    return 1;
+  }
   if (!client.Subscribe(0)) {
     return 1;
   }

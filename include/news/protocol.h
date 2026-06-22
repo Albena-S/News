@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace news {
@@ -24,12 +25,24 @@ struct Frame {
   std::vector<std::byte> payload;
 };
 
+struct Credentials {
+  std::string username;
+  std::string password;
+};
+
 // Frame format: [4-byte payload length][2-byte message type][payload].
 std::vector<std::byte> EncodeFrame(
     MessageType type, const std::vector<std::byte>& payload);
 
 // This interview version assumes data contains one complete, valid frame.
 Frame DecodeFrame(const std::vector<std::byte>& data);
+
+std::vector<std::byte> EncodeAuthRequest(
+    const std::string& username, const std::string& password);
+Credentials DecodeAuthRequest(const std::vector<std::byte>& payload);
+
+std::vector<std::byte> EncodeAuthResult(bool accepted);
+bool DecodeAuthResult(const std::vector<std::byte>& payload);
 
 }  // namespace news
 

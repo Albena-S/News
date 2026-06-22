@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,40 @@ bool NewsClient::Connect() {
     return false;
   }
 
+  return true;
+}
+
+bool NewsClient::Authenticate(
+    const std::string& username, const std::string& password) {
+  const auto payload = EncodeAuthRequest(username, password);
+  const auto frame = EncodeFrame(MessageType::kAuthRequest, payload);
+  const auto sent = ::send(socket_fd_, frame.data(), frame.size(), 0);
+  if (sent < 0 || static_cast<std::size_t>(sent) != frame.size()) {
+    std::cerr << "could not send authentication\n";
+    return false;
+  }
+
+  std::vector<std::byte> received_data(kMaxFrameBytes);
+  const auto received =
+      ::recv(socket_fd_, received_data.data(), received_data.size(), 0);
+  if (received <= 0) {
+    std::cerr << "could not receive authentication result\n";
+    return false;
+  }
+
+  received_data.resize(static_cast<std::size_t>(received));
+  const auto response = DecodeFrame(received_data);
+  if (response.type != MessageType::kAuthResult) {
+    std::cerr << "unexpected authentication response\n";
+    return false;
+  }
+
+  if (!DecodeAuthResult(response.payload)) {
+    std::cerr << "authentication refused\n";
+    return false;
+  }
+
+  std::cout << "authenticated\n";
   return true;
 }
 

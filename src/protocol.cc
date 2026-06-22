@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace news {
 namespace {
@@ -32,6 +33,24 @@ std::uint32_t ReadUint32(const std::vector<std::byte>& data) {
          std::to_integer<std::uint32_t>(data[3]);
 }
 
+std::vector<std::byte> EncodeString(const std::string& text) {
+  std::vector<std::byte> encoded;
+  encoded.reserve(text.size());
+  for (const auto character : text) {
+    encoded.push_back(static_cast<std::byte>(character));
+  }
+  return encoded;
+}
+
+std::string DecodeString(const std::vector<std::byte>& data) {
+  std::string decoded;
+  decoded.reserve(data.size());
+  for (const auto byte : data) {
+    decoded.push_back(static_cast<char>(std::to_integer<unsigned char>(byte)));
+  }
+  return decoded;
+}
+
 }  // namespace
 
 std::vector<std::byte> EncodeFrame(
@@ -53,6 +72,25 @@ Frame DecodeFrame(const std::vector<std::byte>& data) {
       payload_begin + static_cast<std::ptrdiff_t>(payload_bytes);
 
   return {type, {payload_begin, payload_end}};
+}
+
+std::vector<std::byte> EncodeAuthRequest(
+    const std::string& username, const std::string& password) {
+  return EncodeString(username + ':' + password);
+}
+
+Credentials DecodeAuthRequest(const std::vector<std::byte>& payload) {
+  const auto text = DecodeString(payload);
+  const auto separator = text.find(':');
+  return {text.substr(0, separator), text.substr(separator + 1)};
+}
+
+std::vector<std::byte> EncodeAuthResult(const bool accepted) {
+  return {accepted ? std::byte{1} : std::byte{0}};
+}
+
+bool DecodeAuthResult(const std::vector<std::byte>& payload) {
+  return std::to_integer<unsigned int>(payload[0]) != 0U;
 }
 
 }  // namespace news

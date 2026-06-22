@@ -15,6 +15,9 @@
 #include <stdexcept>
 #include <system_error>
 #include <utility>
+#include <vector>
+
+#include "news/protocol.h"
 
 namespace news {
 namespace {
@@ -33,7 +36,8 @@ void CloseFd(int& fd) {
 }  // namespace
 
 EpollServer::EpollServer(ServerConfig config)
-    : config_(std::move(config)) {
+    : config_(std::move(config)),
+      authenticator_(config_.users_file_path) {
   try {
     CreateListener();
     CreateEpoll();
@@ -239,8 +243,7 @@ void EpollServer::HandleSessionEvent(const int fd,
   if ((events & EPOLLIN) != 0U) {
     const auto result = session.ReadAvailable();
 
-    // Protocol decoding will consume this buffer in the next milestone.
-    session.ConsumeReceived(session.received_size());
+    HandleReceivedFrame(session);
 
     if (result.status == IoStatus::kPeerClosed) {
       CloseSession(fd, "peer closed connection");
@@ -264,12 +267,49 @@ void EpollServer::HandleSessionEvent(const int fd,
     }
   }
 
+  if (session.state() == SessionState::kClosing &&
+      !session.has_pending_output()) {
+    CloseSession(fd, "authentication refused");
+    return;
+  }
+
   if ((events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0U) {
     CloseSession(fd, "socket hangup");
     return;
   }
 
   UpdateSessionEvents(session);
+}
+
+void EpollServer::HandleReceivedFrame(Session& session) {
+  if (session.received_size() == 0) {
+    return;
+  }
+
+  const auto begin = session.received_data().begin() +
+                     static_cast<std::ptrdiff_t>(session.received_offset());
+  const auto end = begin + static_cast<std::ptrdiff_t>(session.received_size());
+  const std::vector<std::byte> received_frame(begin, end);
+  const auto frame = DecodeFrame(received_frame);
+
+  if (frame.type == MessageType::kAuthRequest) {
+    const auto credentials = DecodeAuthRequest(frame.payload);
+    const auto accepted = authenticator_.Authenticate(
+        credentials.username, credentials.password);
+    session.QueueFrame(
+        EncodeFrame(MessageType::kAuthResult, EncodeAuthResult(accepted)));
+
+    if (accepted) {
+      session.set_state(SessionState::kAuthenticated);
+    } else {
+      session.set_state(SessionState::kClosing);
+    }
+  } else if (frame.type == MessageType::kSubscribe &&
+             session.state() == SessionState::kAuthenticated) {
+    session.set_state(SessionState::kLive);
+  }
+
+  session.ConsumeReceived(session.received_size());
 }
 
 void EpollServer::HandleSignal() {

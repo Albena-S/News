@@ -16,6 +16,7 @@ struct ServerConfig {
   std::size_t receive_buffer_bytes{kMaxFrameBytes};
   std::size_t max_queued_bytes{1024U * 1024U};
   bool tcp_no_delay{true};
+  std::string users_file_path{"config/users.conf.example"};
 };
 
 }  // namespace news
