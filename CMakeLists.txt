@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(news_server VERSION 0.1.0 LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
+
 option(NEWS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -12,6 +14,7 @@ add_library(news_core
     src/authenticator.cc
     src/byte_buffer.cc
     src/epoll_server.cc
+    src/news_publisher.cc
     src/protocol.cc
     src/replay_ring.cc
     src/session.cc
@@ -19,6 +22,7 @@ add_library(news_core
 )
 
 target_include_directories(news_core PUBLIC include)
+target_link_libraries(news_core PUBLIC Threads::Threads)
 
 target_compile_options(news_core PRIVATE
     -Wall

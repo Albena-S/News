@@ -22,7 +22,10 @@ The port and IPv4 bind address can be overridden:
 
 Press `Ctrl+C` for an orderly shutdown. The current networking milestone accepts
 client connections and handles the simplified authentication and subscription
-frames; news publishing is the next layer.
+frames. A publisher thread generates one demo title every 20 seconds, wakes the
+server event loop with `eventfd`, and the server writes the record to the WAL
+before broadcasting it to live clients. The demo client remembers the last
+received news id and resubscribes from that id after reconnecting.
 
 The demo client authenticates with the user from `config/users.conf.example`.
 Passwords are stored as a small deterministic demo hash so the example does not

@@ -6,25 +6,32 @@
 #include <unistd.h>
 
 #include <cstddef>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "news/protocol.h"
 
 namespace news {
+namespace {
+
+constexpr std::chrono::seconds kReconnectDelay{1};
+
+}  // namespace
 
 NewsClient::NewsClient(std::string address, const std::uint16_t port)
     : address_(std::move(address)), port_(port) {}
 
 NewsClient::~NewsClient() {
-  if (socket_fd_ >= 0) {
-    ::close(socket_fd_);
-  }
+  Close();
 }
 
 bool NewsClient::Connect() {
+  Close();
+
   socket_fd_ = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (socket_fd_ < 0) {
     std::cerr << "could not create client socket\n";
@@ -39,6 +46,7 @@ bool NewsClient::Connect() {
   if (::connect(socket_fd_, reinterpret_cast<sockaddr*>(&server_address),
                 sizeof(server_address)) < 0) {
     std::cerr << "could not connect to server\n";
+    Close();
     return false;
   }
 
@@ -88,7 +96,8 @@ bool NewsClient::Subscribe(const std::uint64_t last_seen_id) {
     return false;
   }
 
-  std::cout << "subscribed; waiting for news\n";
+  std::cout << "subscribed from news id " << last_seen_id
+            << "; waiting for news\n";
   return true;
 }
 
@@ -107,10 +116,33 @@ void NewsClient::ReceiveNews() {
 
     if (frame.type == MessageType::kNews) {
       const auto record = DecodeNews(frame.payload);
+      last_received_id_ = record.id;
       std::cout << "news " << record.id << ": " << record.title << '\n';
     }
 
     received_data.resize(kMaxFrameBytes);
+  }
+}
+
+void NewsClient::Run(
+    const std::string& username, const std::string& password) {
+  for (;;) {
+    if (Connect() && Authenticate(username, password) &&
+        Subscribe(last_received_id_)) {
+      ReceiveNews();
+    }
+
+    Close();
+    std::cout << "disconnected; reconnecting from news id "
+              << last_received_id_ << '\n';
+    std::this_thread::sleep_for(kReconnectDelay);
+  }
+}
+
+void NewsClient::Close() {
+  if (socket_fd_ >= 0) {
+    ::close(socket_fd_);
+    socket_fd_ = -1;
   }
 }
 
