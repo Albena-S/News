@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "news/authenticator.h"
 #include "news/config.h"
@@ -36,6 +37,7 @@ class EpollServer {
   void HandleReceivedFrame(Session& session);
   void HandlePublisherEvent();
   void HandleSignal();
+  std::vector<NewsRecord> ReplayRecordsFrom(std::uint64_t first_id) const;
   void PublishTitle(const std::string& title);
   void BroadcastNews(const NewsRecord& record);
   void CloseSession(int fd, const char* reason);

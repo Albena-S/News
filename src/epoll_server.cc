@@ -320,7 +320,7 @@ void EpollServer::HandleReceivedFrame(Session& session) {
   } else if (frame.type == MessageType::kSubscribe &&
              session.state() == SessionState::kAuthenticated) {
     const auto last_seen_id = DecodeSubscribe(frame.payload);
-    const auto replay_records = replay_ring_.From(last_seen_id + 1);
+    const auto replay_records = ReplayRecordsFrom(last_seen_id + 1);
     for (const auto& record : replay_records) {
       session.QueueFrame(EncodeFrame(MessageType::kNews, EncodeNews(record)));
     }
@@ -354,6 +354,16 @@ void EpollServer::HandlePublisherEvent() {
   for (const auto& title : titles) {
     PublishTitle(title);
   }
+}
+
+std::vector<NewsRecord> EpollServer::ReplayRecordsFrom(
+    const std::uint64_t first_id) const {
+  const auto oldest_id = replay_ring_.oldest_id();
+  if (oldest_id != 0 && first_id >= oldest_id) {
+    return replay_ring_.From(first_id);
+  }
+
+  return wal_.From(first_id);
 }
 
 void EpollServer::PublishTitle(const std::string& title) {

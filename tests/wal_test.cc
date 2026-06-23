@@ -42,6 +42,22 @@ void TestAppendAndRecover() {
   assert(records[2].title == "third title");
 }
 
+void TestReadFromId() {
+  RemoveTestWal();
+
+  const news::Wal wal(TestWalPath());
+  assert(wal.Append({1, "first title"}));
+  assert(wal.Append({2, "second title"}));
+  assert(wal.Append({3, "third title"}));
+
+  const auto records = wal.From(2);
+  assert(records.size() == 2);
+  assert(records[0].id == 2);
+  assert(records[0].title == "second title");
+  assert(records[1].id == 3);
+  assert(records[1].title == "third title");
+}
+
 void TestPartialFinalRecordIsIgnored() {
   RemoveTestWal();
 
@@ -63,6 +79,7 @@ void TestPartialFinalRecordIsIgnored() {
 int main() {
   TestEmptyWal();
   TestAppendAndRecover();
+  TestReadFromId();
   TestPartialFinalRecordIsIgnored();
   RemoveTestWal();
 

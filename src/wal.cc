@@ -112,4 +112,14 @@ std::vector<NewsRecord> Wal::Recover() const {
   return records;
 }
 
+std::vector<NewsRecord> Wal::From(const std::uint64_t first_id) const {
+  std::vector<NewsRecord> records;
+  for (const auto& record : Recover()) {
+    if (record.id >= first_id) {
+      records.push_back(record);
+    }
+  }
+  return records;
+}
+
 }  // namespace news
