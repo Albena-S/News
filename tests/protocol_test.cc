@@ -14,6 +14,15 @@ int main() {
   const auto accepted_payload = news::EncodeAuthResult(true);
   assert(news::DecodeAuthResult(accepted_payload));
 
+  const auto subscribe_payload = news::EncodeSubscribe(42);
+  assert(news::DecodeSubscribe(subscribe_payload) == 42);
+
+  const news::NewsRecord record{7, "market update"};
+  const auto news_payload = news::EncodeNews(record);
+  const auto decoded_record = news::DecodeNews(news_payload);
+  assert(decoded_record.id == 7);
+  assert(decoded_record.title == "market update");
+
   const std::vector<std::byte> payload{
       std::byte{'n'},
       std::byte{'e'},

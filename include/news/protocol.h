@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "news/news_record.h"
+
 namespace news {
 
 constexpr std::size_t kFrameHeaderBytes = 6;
@@ -43,6 +45,12 @@ Credentials DecodeAuthRequest(const std::vector<std::byte>& payload);
 
 std::vector<std::byte> EncodeAuthResult(bool accepted);
 bool DecodeAuthResult(const std::vector<std::byte>& payload);
+
+std::vector<std::byte> EncodeSubscribe(std::uint64_t last_seen_id);
+std::uint64_t DecodeSubscribe(const std::vector<std::byte>& payload);
+
+std::vector<std::byte> EncodeNews(const NewsRecord& record);
+NewsRecord DecodeNews(const std::vector<std::byte>& payload);
 
 }  // namespace news
 

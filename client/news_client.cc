@@ -14,21 +14,6 @@
 #include "news/protocol.h"
 
 namespace news {
-namespace {
-
-constexpr std::size_t kSequenceBytes = 8;
-
-std::vector<std::byte> EncodeSequence(const std::uint64_t sequence) {
-  std::vector<std::byte> encoded(kSequenceBytes);
-  for (std::size_t index = 0; index < kSequenceBytes; ++index) {
-    const auto shift = static_cast<unsigned int>(
-        (kSequenceBytes - index - 1) * 8);
-    encoded[index] = static_cast<std::byte>((sequence >> shift) & 0xffU);
-  }
-  return encoded;
-}
-
-}  // namespace
 
 NewsClient::NewsClient(std::string address, const std::uint16_t port)
     : address_(std::move(address)), port_(port) {}
@@ -94,8 +79,8 @@ bool NewsClient::Authenticate(
   return true;
 }
 
-bool NewsClient::Subscribe(const std::uint64_t last_seen_sequence) {
-  const auto payload = EncodeSequence(last_seen_sequence);
+bool NewsClient::Subscribe(const std::uint64_t last_seen_id) {
+  const auto payload = EncodeSubscribe(last_seen_id);
   const auto frame = EncodeFrame(MessageType::kSubscribe, payload);
   const auto sent = ::send(socket_fd_, frame.data(), frame.size(), 0);
   if (sent < 0 || static_cast<std::size_t>(sent) != frame.size()) {
@@ -121,11 +106,8 @@ void NewsClient::ReceiveNews() {
     const auto frame = DecodeFrame(received_data);
 
     if (frame.type == MessageType::kNews) {
-      std::cout << "news: ";
-      for (const auto byte : frame.payload) {
-        std::cout << static_cast<char>(std::to_integer<unsigned char>(byte));
-      }
-      std::cout << '\n';
+      const auto record = DecodeNews(frame.payload);
+      std::cout << "news " << record.id << ": " << record.title << '\n';
     }
 
     received_data.resize(kMaxFrameBytes);
