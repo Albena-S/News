@@ -17,6 +17,8 @@ struct ServerConfig {
   std::size_t max_queued_bytes{1024U * 1024U};
   bool tcp_no_delay{true};
   std::string users_file_path{"config/users.conf.example"};
+  std::string wal_file_path{"news.wal"};
+  std::size_t replay_ring_capacity{128};
 };
 
 }  // namespace news

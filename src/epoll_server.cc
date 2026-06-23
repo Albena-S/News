@@ -13,6 +13,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -37,13 +38,23 @@ void CloseFd(int& fd) {
 
 EpollServer::EpollServer(ServerConfig config)
     : config_(std::move(config)),
-      authenticator_(config_.users_file_path) {
+      authenticator_(config_.users_file_path),
+      wal_(config_.wal_file_path),
+      replay_ring_(config_.replay_ring_capacity) {
   try {
+    const auto recovered_records = wal_.Recover();
+    for (const auto& record : recovered_records) {
+      replay_ring_.Append(record);
+      next_id_ = record.id + 1;
+    }
+
     CreateListener();
     CreateEpoll();
     CreateSignalFd();
     AddToEpoll(listener_fd_, EPOLLIN);
     AddToEpoll(signal_fd_, EPOLLIN);
+    AddToEpoll(publisher_.event_fd(), EPOLLIN);
+    publisher_.Start();
   } catch (...) {
     CloseAll();
     throw;
@@ -80,6 +91,8 @@ void EpollServer::Run() {
           AcceptConnections();
         } else if (fd == signal_fd_) {
           HandleSignal();
+        } else if (fd == publisher_.event_fd()) {
+          HandlePublisherEvent();
         } else {
           HandleSessionEvent(fd, event_flags);
         }
@@ -306,10 +319,67 @@ void EpollServer::HandleReceivedFrame(Session& session) {
     }
   } else if (frame.type == MessageType::kSubscribe &&
              session.state() == SessionState::kAuthenticated) {
+    const auto last_seen_id = DecodeSubscribe(frame.payload);
+    const auto replay_records = replay_ring_.From(last_seen_id + 1);
+    for (const auto& record : replay_records) {
+      session.QueueFrame(EncodeFrame(MessageType::kNews, EncodeNews(record)));
+    }
     session.set_state(SessionState::kLive);
   }
 
   session.ConsumeReceived(session.received_size());
+}
+
+void EpollServer::HandlePublisherEvent() {
+  std::uint64_t wake_count = 0;
+  for (;;) {
+    const auto bytes =
+        ::read(publisher_.event_fd(), &wake_count, sizeof(wake_count));
+    if (bytes == static_cast<ssize_t>(sizeof(wake_count))) {
+      continue;
+    }
+    if (bytes < 0 && errno == EINTR) {
+      continue;
+    }
+    if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      break;
+    }
+    if (bytes < 0) {
+      ThrowSystemError("read(publisher eventfd)");
+    }
+    break;
+  }
+
+  const auto titles = publisher_.TakeTitles();
+  for (const auto& title : titles) {
+    PublishTitle(title);
+  }
+}
+
+void EpollServer::PublishTitle(const std::string& title) {
+  NewsRecord record;
+  record.id = next_id_;
+  record.title = title;
+
+  if (!wal_.Append(record)) {
+    throw std::runtime_error("could not append news to WAL");
+  }
+
+  ++next_id_;
+  replay_ring_.Append(record);
+  BroadcastNews(record);
+
+  std::cout << "published news " << record.id << ": " << record.title << '\n';
+}
+
+void EpollServer::BroadcastNews(const NewsRecord& record) {
+  const auto frame = EncodeFrame(MessageType::kNews, EncodeNews(record));
+  for (auto& [fd, session] : sessions_) {
+    if (session.state() == SessionState::kLive) {
+      session.QueueFrame(frame);
+      UpdateSessionEvents(session);
+    }
+  }
 }
 
 void EpollServer::HandleSignal() {
@@ -343,6 +413,7 @@ void EpollServer::CloseSession(const int fd, const char* reason) {
 }
 
 void EpollServer::CloseAll() {
+  publisher_.Stop();
   sessions_.clear();
   CloseFd(signal_fd_);
   CloseFd(listener_fd_);
