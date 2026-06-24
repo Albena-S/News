@@ -212,7 +212,6 @@ void EpollServer::AcceptConnections() {
       ThrowSystemError("accept4");
     }
 
-    if (config_.tcp_no_delay) {
       const int enabled = 1;
       if (::setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
                        sizeof(enabled)) < 0) {
@@ -220,7 +219,6 @@ void EpollServer::AcceptConnections() {
                   << std::strerror(errno) << '\n';
         ::close(client_fd);
         continue;
-      }
     }
 
     Session session(client_fd, config_.receive_buffer_bytes,
