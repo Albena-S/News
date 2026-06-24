@@ -36,14 +36,6 @@ class EpollServer {
    */
   void Run();
 
-  /**
-   * Returns the actual listening port.
-   *
-   * This is useful when the configured port is 0 and the operating system
-   * chooses an available port.
-   */
-  std::uint16_t port() const;
-
  private:
   /**
    * Creates the non-blocking TCP listening socket, binds it to the configured

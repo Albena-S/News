@@ -106,10 +106,6 @@ void EpollServer::Run() {
   std::cout << "news server stopped\n";
 }
 
-std::uint16_t EpollServer::port() const {
-  return bound_port_;
-}
-
 void EpollServer::CreateListener() {
   listener_fd_ =
       ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);

@@ -12,7 +12,6 @@ namespace news {
 enum class SessionState {
   kConnected,
   kAuthenticated,
-  kReplaying,
   kLive,
   kClosing,
 };
@@ -42,8 +41,6 @@ class Session {
           std::size_t max_queued_bytes);
   ~Session();
 
-  Session(const Session&) = delete;
-  Session& operator=(const Session&) = delete;
   Session(Session&& other);
   Session& operator=(Session&& other);
 
@@ -54,7 +51,6 @@ class Session {
   int fd() const;
   SessionState state() const;
   bool has_pending_output() const;
-  std::size_t queued_bytes() const;
   const std::vector<std::byte>& received_data() const;
   std::size_t received_offset() const;
   std::size_t received_size() const;

@@ -142,10 +142,6 @@ bool Session::has_pending_output() const {
   return !output_queue_.empty();
 }
 
-std::size_t Session::queued_bytes() const {
-  return queued_bytes_;
-}
-
 const std::vector<std::byte>& Session::received_data() const {
   return receive_buffer_.data();
 }
