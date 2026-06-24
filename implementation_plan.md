@@ -78,27 +78,27 @@ News/
 |-- config/
 |   `-- users.conf.example
 |-- include/news/
-|   |-- protocol.hpp
-|   |-- byte_buffer.hpp
-|   |-- session.hpp
-|   |-- epoll_server.hpp
-|   |-- wal.hpp
-|   |-- replay_ring.hpp
-|   `-- news_record.hpp
+|   |-- protocol.h
+|   |-- byte_buffer.h
+|   |-- session.h
+|   |-- epoll_server.h
+|   |-- wal.h
+|   |-- replay_ring.h
+|   `-- news_record.h
 |-- src/
-|   |-- protocol.cpp
-|   |-- session.cpp
-|   |-- epoll_server.cpp
-|   |-- wal.cpp
-|   |-- replay_ring.cpp
-|   `-- server_main.cpp
+|   |-- protocol.cc
+|   |-- session.cc
+|   |-- epoll_server.cc
+|   |-- wal.cc
+|   |-- replay_ring.cc
+|   `-- server_main.cc
 |-- client/
-|   `-- client_main.cpp
+|   `-- client_main.cc
 |-- tests/
-|   |-- protocol_tests.cpp
-|   |-- wal_tests.cpp
-|   |-- replay_ring_tests.cpp
-|   `-- integration_tests.cpp
+|   |-- protocol_test.cc
+|   |-- wal_test.cc
+|   |-- replay_ring_test.cc
+|   `-- integration_test.cc
 `-- scripts/
     `-- demo_recovery.sh
 ```
