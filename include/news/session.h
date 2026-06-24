@@ -30,6 +30,12 @@ struct IoResult {
   int error_number{0};
 };
 
+/**
+ * Stores the state and buffers for one connected client.
+ *
+ * A session owns the client socket, keeps received bytes until the server
+ * decodes them, and queues encoded frames until the socket is ready to send.
+ */
 class Session {
  public:
   Session(int fd, std::size_t receive_capacity,
