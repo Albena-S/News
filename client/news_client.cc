@@ -20,7 +20,7 @@
 namespace news {
 namespace {
 
-constexpr std::chrono::seconds kReconnectDelay{1};
+constexpr std::chrono::seconds kReconnectDelay{5};
 
 }  // namespace
 
@@ -177,16 +177,24 @@ void NewsClient::ReceiveNews() {
 
 void NewsClient::Run(
     const std::string& username, const std::string& password) {
+  if (!Connect() || !Authenticate(username, password) ||
+      !Subscribe(last_received_id_)) {
+    Close();
+    return;
+  }
+
   for (;;) {
-    if (Connect() && Authenticate(username, password) &&
-        Subscribe(last_received_id_)) {
-      ReceiveNews();
-    }
+    ReceiveNews();
 
     Close();
     std::cout << "disconnected; reconnecting from news id "
               << last_received_id_ << '\n';
-    std::this_thread::sleep_for(kReconnectDelay);
+    while (!Connect() || !Authenticate(username, password) ||
+           !Subscribe(last_received_id_)) {
+      Close();
+      std::cout << "reconnect failed; retrying in 5 seconds\n";
+      std::this_thread::sleep_for(kReconnectDelay);
+    }
   }
 }
 
