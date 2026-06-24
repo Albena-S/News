@@ -8,11 +8,14 @@ cmake --build build
 ctest --test-dir build
 ```
 
-Run the server on the default address (`0.0.0.0:9000`):
+Run the server on the default local address (`127.0.0.1:9000`):
 
 ```sh
 ./build/news_server
 ```
+
+`127.0.0.1` means "listen only on this machine." To accept connections from
+other machines on the network, bind to `0.0.0.0` explicitly.
 
 The port and IPv4 bind address can be overridden:
 
