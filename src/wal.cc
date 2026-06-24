@@ -8,55 +8,20 @@
 #include <utility>
 #include <vector>
 
+#include "binary_encoding.h"
+
 namespace news {
 namespace {
 
 constexpr std::size_t kWalHeaderBytes = 12;
 
-void AppendUint32(std::string& output, const std::uint32_t value) {
-  output.push_back(static_cast<char>((value >> 24U) & 0xffU));
-  output.push_back(static_cast<char>((value >> 16U) & 0xffU));
-  output.push_back(static_cast<char>((value >> 8U) & 0xffU));
-  output.push_back(static_cast<char>(value & 0xffU));
-}
-
-void AppendUint64(std::string& output, const std::uint64_t value) {
-  for (int byte = 7; byte >= 0; --byte) {
-    const auto shift = static_cast<unsigned int>(byte * 8);
-    output.push_back(static_cast<char>((value >> shift) & 0xffU));
-  }
-}
-
-std::uint32_t ReadUint32(const std::string& input,
-                         const std::size_t offset) {
-  return (static_cast<std::uint32_t>(
-              static_cast<unsigned char>(input[offset]))
-          << 24U) |
-         (static_cast<std::uint32_t>(
-              static_cast<unsigned char>(input[offset + 1]))
-          << 16U) |
-         (static_cast<std::uint32_t>(
-              static_cast<unsigned char>(input[offset + 2]))
-          << 8U) |
-         static_cast<std::uint32_t>(
-             static_cast<unsigned char>(input[offset + 3]));
-}
-
-std::uint64_t ReadUint64(const std::string& input) {
-  std::uint64_t value = 0;
-  for (std::size_t index = 0; index < 8; ++index) {
-    value <<= 8U;
-    value |= static_cast<unsigned char>(input[index]);
-  }
-  return value;
-}
-
 std::string EncodeRecord(const NewsRecord& record) {
   std::string encoded;
   encoded.reserve(kWalHeaderBytes + record.title.size());
 
-  AppendUint64(encoded, record.id);
-  AppendUint32(encoded, static_cast<std::uint32_t>(record.title.size()));
+  internal::AppendUint64(encoded, record.id);
+  internal::AppendUint32(encoded,
+                         static_cast<std::uint32_t>(record.title.size()));
   encoded.append(record.title);
   return encoded;
 }
@@ -97,8 +62,8 @@ std::vector<NewsRecord> Wal::Recover() const {
       break;
     }
 
-    const auto id = ReadUint64(header);
-    const auto title_size = ReadUint32(header, 8);
+    const auto id = internal::ReadUint64(header, 0);
+    const auto title_size = internal::ReadUint32(header, 8);
 
     std::string title(title_size, '\0');
     file.read(title.data(), static_cast<std::streamsize>(title.size()));
