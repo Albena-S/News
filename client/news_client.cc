@@ -6,7 +6,9 @@
 #include <unistd.h>
 
 #include <cstddef>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -34,18 +36,24 @@ bool NewsClient::Connect() {
 
   socket_fd_ = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (socket_fd_ < 0) {
-    std::cerr << "could not create client socket\n";
+    std::cerr << "could not create client socket: " << std::strerror(errno)
+              << '\n';
     return false;
   }
 
   sockaddr_in server_address{};
   server_address.sin_family = AF_INET;
   server_address.sin_port = htons(port_);
-  ::inet_pton(AF_INET, address_.c_str(), &server_address.sin_addr);
+  if (::inet_pton(AF_INET, address_.c_str(), &server_address.sin_addr) != 1) {
+    std::cerr << "invalid server address: " << address_ << '\n';
+    Close();
+    return false;
+  }
 
   if (::connect(socket_fd_, reinterpret_cast<sockaddr*>(&server_address),
                 sizeof(server_address)) < 0) {
-    std::cerr << "could not connect to server\n";
+    std::cerr << "could not connect to " << address_ << ':' << port_ << ": "
+              << std::strerror(errno) << '\n';
     Close();
     return false;
   }
@@ -59,7 +67,12 @@ bool NewsClient::Authenticate(
   const auto frame = EncodeFrame(MessageType::kAuthRequest, payload);
   const auto sent = ::send(socket_fd_, frame.data(), frame.size(), 0);
   if (sent < 0 || static_cast<std::size_t>(sent) != frame.size()) {
-    std::cerr << "could not send authentication\n";
+    if (sent < 0) {
+      std::cerr << "could not send authentication request: "
+                << std::strerror(errno) << '\n';
+    } else {
+      std::cerr << "could not send complete authentication request\n";
+    }
     return false;
   }
 
@@ -67,7 +80,12 @@ bool NewsClient::Authenticate(
   const auto received =
       ::recv(socket_fd_, received_data.data(), received_data.size(), 0);
   if (received <= 0) {
-    std::cerr << "could not receive authentication result\n";
+    if (received < 0) {
+      std::cerr << "could not receive authentication result: "
+                << std::strerror(errno) << '\n';
+    } else {
+      std::cerr << "server closed connection before authentication result\n";
+    }
     return false;
   }
 
@@ -79,7 +97,7 @@ bool NewsClient::Authenticate(
   }
 
   if (!DecodeAuthResult(response.payload)) {
-    std::cerr << "authentication refused\n";
+    std::cerr << "authentication refused: username or password did not match\n";
     return false;
   }
 
@@ -92,7 +110,12 @@ bool NewsClient::Subscribe(const std::uint64_t last_seen_id) {
   const auto frame = EncodeFrame(MessageType::kSubscribe, payload);
   const auto sent = ::send(socket_fd_, frame.data(), frame.size(), 0);
   if (sent < 0 || static_cast<std::size_t>(sent) != frame.size()) {
-    std::cerr << "could not send subscription\n";
+    if (sent < 0) {
+      std::cerr << "could not send subscription: " << std::strerror(errno)
+                << '\n';
+    } else {
+      std::cerr << "could not send complete subscription\n";
+    }
     return false;
   }
 
@@ -108,6 +131,12 @@ void NewsClient::ReceiveNews() {
     const auto received =
         ::recv(socket_fd_, received_data.data(), received_data.size(), 0);
     if (received <= 0) {
+      if (received < 0) {
+        std::cerr << "could not receive news: " << std::strerror(errno)
+                  << '\n';
+      } else {
+        std::cerr << "server closed connection\n";
+      }
       return;
     }
 
