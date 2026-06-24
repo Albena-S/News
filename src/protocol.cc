@@ -41,10 +41,6 @@ std::uint32_t ReadUint32(const std::vector<std::byte>& data,
          std::to_integer<std::uint32_t>(data[offset + 3]);
 }
 
-std::uint32_t ReadUint32(const std::vector<std::byte>& data) {
-  return ReadUint32(data, 0);
-}
-
 std::uint64_t ReadUint64(const std::vector<std::byte>& data,
                          const std::size_t offset) {
   std::uint64_t value = 0;
@@ -86,10 +82,20 @@ std::vector<std::byte> EncodeFrame(
 }
 
 Frame DecodeFrame(const std::vector<std::byte>& data) {
-  const auto payload_bytes = ReadUint32(data);
-  const auto type = static_cast<MessageType>(ReadUint16(data, 4));
+  return DecodeFrameAt(data, 0);
+}
+
+std::size_t EncodedFrameSize(
+    const std::vector<std::byte>& data, const std::size_t offset) {
+  return kFrameHeaderBytes + ReadUint32(data, offset);
+}
+
+Frame DecodeFrameAt(
+    const std::vector<std::byte>& data, const std::size_t offset) {
+  const auto payload_bytes = ReadUint32(data, offset);
+  const auto type = static_cast<MessageType>(ReadUint16(data, offset + 4));
   const auto payload_begin =
-      data.begin() + static_cast<std::ptrdiff_t>(kFrameHeaderBytes);
+      data.begin() + static_cast<std::ptrdiff_t>(offset + kFrameHeaderBytes);
   const auto payload_end =
       payload_begin + static_cast<std::ptrdiff_t>(payload_bytes);
 

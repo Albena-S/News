@@ -2,13 +2,17 @@
 #define NEWS_CLIENT_NEWS_CLIENT_H_
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace news {
 
 class NewsClient {
  public:
-  NewsClient(std::string address, std::uint16_t port);
+  NewsClient(
+      std::string address, std::uint16_t port,
+      std::uint64_t last_received_id =
+          std::numeric_limits<std::uint64_t>::max());
   ~NewsClient();
 
   bool Connect();
@@ -22,7 +26,8 @@ class NewsClient {
 
   std::string address_;
   std::uint16_t port_;
-  std::uint64_t last_received_id_{0};
+  std::uint64_t last_received_id_{
+      std::numeric_limits<std::uint64_t>::max()};
   int socket_fd_{-1};
 };
 

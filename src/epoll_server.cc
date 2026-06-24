@@ -320,7 +320,10 @@ void EpollServer::HandleReceivedFrame(Session& session) {
   } else if (frame.type == MessageType::kSubscribe &&
              session.state() == SessionState::kAuthenticated) {
     const auto last_seen_id = DecodeSubscribe(frame.payload);
-    const auto replay_records = ReplayRecordsFrom(last_seen_id + 1);
+    const auto newest_id = next_id_ - 1;
+    const auto first_replay_id =
+        last_seen_id > newest_id ? next_id_ : last_seen_id + 1;
+    const auto replay_records = ReplayRecordsFrom(first_replay_id);
     for (const auto& record : replay_records) {
       session.QueueFrame(EncodeFrame(MessageType::kNews, EncodeNews(record)));
     }

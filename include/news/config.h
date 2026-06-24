@@ -10,7 +10,7 @@
 namespace news {
 
 struct ServerConfig {
-  std::string bind_address{"0.0.0.0"};
+  std::string bind_address{"127.0.0.1"};
   std::uint16_t port{9000};
   int listen_backlog{128};
   std::size_t receive_buffer_bytes{kMaxFrameBytes};
