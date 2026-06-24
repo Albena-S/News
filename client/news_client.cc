@@ -24,8 +24,12 @@ constexpr std::chrono::seconds kReconnectDelay{1};
 
 }  // namespace
 
-NewsClient::NewsClient(std::string address, const std::uint16_t port)
-    : address_(std::move(address)), port_(port) {}
+NewsClient::NewsClient(
+    std::string address, const std::uint16_t port,
+    const std::uint64_t last_received_id)
+    : address_(std::move(address)),
+      port_(port),
+      last_received_id_(last_received_id) {}
 
 NewsClient::~NewsClient() {
   Close();

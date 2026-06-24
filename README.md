@@ -26,12 +26,14 @@ The port and IPv4 bind address can be overridden:
 In another terminal, connect the demo client:
 
 ```sh
-./build/news_client 127.0.0.1 8080 demo demo
+./build/news_client 127.0.0.1 8080 demo demo 0
 ```
 
 The demo authentication credentials are username `demo` and password `demo`.
-The client subscribes from its last received news id, prints incoming titles,
-and reconnects automatically if the socket is closed.
+The final argument is the last received news id. If it is omitted, the client
+waits only for new titles. Use `0` explicitly to receive everything available.
+If the id is equal to or larger than the newest server id, the subscription is
+valid and the client waits for the next title.
 
 Press `Ctrl+C` for an orderly shutdown. The current networking milestone accepts
 client connections and handles the simplified authentication and subscription
