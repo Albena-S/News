@@ -4,8 +4,6 @@ project(news_server VERSION 0.1.0 LANGUAGES CXX)
 
 find_package(Threads REQUIRED)
 
-option(NEWS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -30,11 +28,6 @@ target_compile_options(news_core PRIVATE
     -Wpedantic
     -Wconversion
 )
-
-if(NEWS_ENABLE_SANITIZERS)
-    target_compile_options(news_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(news_core PUBLIC -fsanitize=address,undefined)
-endif()
 
 add_executable(news_server src/server_main.cc)
 target_link_libraries(news_server PRIVATE news_core)
