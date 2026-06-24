@@ -20,8 +20,17 @@ other machines on the network, bind to `0.0.0.0` explicitly.
 The port and IPv4 bind address can be overridden:
 
 ```sh
-./build/news_server 8080 127.0.0.1
+./build/news_server 8080 0.0.0.0
 ```
+
+In another terminal, connect the demo client:
+
+```sh
+./build/news_client 127.0.0.1 8080
+```
+
+The client authenticates as `demo`, subscribes from its last received news id,
+prints incoming titles, and reconnects automatically if the socket is closed.
 
 Press `Ctrl+C` for an orderly shutdown. The current networking milestone accepts
 client connections and handles the simplified authentication and subscription
