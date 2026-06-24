@@ -10,6 +10,11 @@
 
 namespace {
 
+constexpr std::string_view kDefaultAddress = "127.0.0.1";
+constexpr std::uint16_t kDefaultPort = 9000;
+constexpr std::string_view kDefaultUsername = "demo";
+constexpr std::string_view kDefaultPassword = "demo";
+
 std::uint16_t ParsePort(const std::string_view text) {
   unsigned int port = 0;
   const auto [end, error] =
@@ -24,14 +29,16 @@ std::uint16_t ParsePort(const std::string_view text) {
 }  // namespace
 
 int main(const int argc, char* argv[]) {
-  if (argc > 3) {
-    std::cerr << "usage: news_client [address] [port]\n";
+  if (argc > 5) {
+    std::cerr << "usage: news_client [address] [port] [username] [password]\n";
     return 2;
   }
 
   try {
-    std::string address = "127.0.0.1";
-    std::uint16_t port = 9000;
+    std::string address(kDefaultAddress);
+    std::uint16_t port = kDefaultPort;
+    std::string username(kDefaultUsername);
+    std::string password(kDefaultPassword);
 
     if (argc >= 2) {
       address = argv[1];
@@ -39,9 +46,15 @@ int main(const int argc, char* argv[]) {
     if (argc == 3) {
       port = ParsePort(argv[2]);
     }
+    if (argc >= 4) {
+      username = argv[3];
+    }
+    if (argc == 5) {
+      password = argv[4];
+    }
 
     news::NewsClient client(address, port);
-    client.Run("demo", "demo");
+    client.Run(username, password);
   } catch (const std::exception& error) {
     std::cerr << "news_client: " << error.what() << '\n';
     return 1;
