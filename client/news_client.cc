@@ -126,6 +126,7 @@ bool NewsClient::Subscribe(const std::uint64_t last_seen_id) {
 
 void NewsClient::ReceiveNews() {
   std::vector<std::byte> received_data(kMaxFrameBytes);
+  std::vector<std::byte> pending_data;
 
   while (true) {
     const auto received =
@@ -140,16 +141,33 @@ void NewsClient::ReceiveNews() {
       return;
     }
 
-    received_data.resize(static_cast<std::size_t>(received));
-    const auto frame = DecodeFrame(received_data);
+    const auto received_size = static_cast<std::size_t>(received);
+    pending_data.insert(pending_data.end(), received_data.begin(),
+                        received_data.begin() +
+                            static_cast<std::ptrdiff_t>(received_size));
 
-    if (frame.type == MessageType::kNews) {
-      const auto record = DecodeNews(frame.payload);
-      last_received_id_ = record.id;
-      std::cout << "news " << record.id << ": " << record.title << '\n';
+    std::size_t offset = 0;
+    while (pending_data.size() - offset >= kFrameHeaderBytes) {
+      const auto frame_size = EncodedFrameSize(pending_data, offset);
+      if (pending_data.size() - offset < frame_size) {
+        break;
+      }
+
+      const auto frame = DecodeFrameAt(pending_data, offset);
+      if (frame.type == MessageType::kNews) {
+        const auto record = DecodeNews(frame.payload);
+        last_received_id_ = record.id;
+        std::cout << "news " << record.id << ": " << record.title << '\n';
+      }
+
+      offset += frame_size;
     }
 
-    received_data.resize(kMaxFrameBytes);
+    if (offset > 0) {
+      pending_data.erase(pending_data.begin(),
+                         pending_data.begin() +
+                             static_cast<std::ptrdiff_t>(offset));
+    }
   }
 }
 

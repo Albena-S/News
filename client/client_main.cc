@@ -43,7 +43,7 @@ int main(const int argc, char* argv[]) {
     if (argc >= 2) {
       address = argv[1];
     }
-    if (argc == 3) {
+    if (argc >= 3) {
       port = ParsePort(argv[2]);
     }
     if (argc >= 4) {

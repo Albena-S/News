@@ -35,5 +35,14 @@ int main() {
 
   assert(decoded.type == news::MessageType::kNews);
   assert(decoded.payload == payload);
+
+  auto two_frames = encoded;
+  two_frames.insert(two_frames.end(), encoded.begin(), encoded.end());
+  const auto first_size = news::EncodedFrameSize(two_frames, 0);
+  const auto first_frame = news::DecodeFrameAt(two_frames, 0);
+  const auto second_frame = news::DecodeFrameAt(two_frames, first_size);
+  assert(first_frame.payload == payload);
+  assert(second_frame.payload == payload);
+
   return 0;
 }

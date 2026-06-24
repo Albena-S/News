@@ -38,6 +38,9 @@ std::vector<std::byte> EncodeFrame(
 
 // This interview version assumes data contains one complete, valid frame.
 Frame DecodeFrame(const std::vector<std::byte>& data);
+std::size_t EncodedFrameSize(const std::vector<std::byte>& data,
+                             std::size_t offset);
+Frame DecodeFrameAt(const std::vector<std::byte>& data, std::size_t offset);
 
 std::vector<std::byte> EncodeAuthRequest(
     const std::string& username, const std::string& password);
