@@ -10,8 +10,23 @@
 
 namespace news {
 
+/**
+ * Number of bytes before the frame body:
+ * 4 bytes for body size and 2 bytes for message type.
+ */
 constexpr std::size_t kFrameHeaderBytes = 6;
+
+/**
+ * Maximum body size accepted by the demo protocol.
+ *
+ * 64 KiB is intentionally small: enough for short news/auth messages and easy
+ * to reason about in an interview.
+ */
 constexpr std::size_t kMaxPayloadBytes = 64U * 1024U;
+
+/**
+ * Maximum full frame size: header plus body.
+ */
 constexpr std::size_t kMaxFrameBytes =
     kFrameHeaderBytes + kMaxPayloadBytes;
 
@@ -36,7 +51,6 @@ struct Credentials {
 std::vector<std::byte> EncodeFrame(
     MessageType type, const std::vector<std::byte>& payload);
 
-// This interview version assumes data contains one complete, valid frame.
 Frame DecodeFrame(const std::vector<std::byte>& data);
 std::size_t EncodedFrameSize(const std::vector<std::byte>& data,
                              std::size_t offset);

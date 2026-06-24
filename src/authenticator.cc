@@ -23,10 +23,11 @@ Authenticator::Authenticator(std::string users_file_path)
 
 bool Authenticator::Authenticate(
     const std::string& username, const std::string& password) const {
-  if (!password_hash_by_user_.contains(username)) {
+  const auto found = password_hash_by_user_.find(username);
+  if (found == password_hash_by_user_.end()) {
     return false;
   }
-  return password_hash_by_user_.at(username) == HashPassword(password);
+  return found->second == HashPassword(password);
 }
 
 std::string Authenticator::HashPassword(const std::string& password) {

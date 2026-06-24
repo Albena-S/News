@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -15,7 +16,7 @@ std::uint16_t ParsePort(const std::string_view text) {
   const auto [end, error] =
       std::from_chars(text.data(), text.data() + text.size(), port);
   if (error != std::errc{} || end != text.data() + text.size() ||
-      port > 65'535U) {
+      port > std::numeric_limits<std::uint16_t>::max()) {
     throw std::invalid_argument("port must be an integer from 0 to 65535");
   }
   return static_cast<std::uint16_t>(port);

@@ -7,10 +7,10 @@ Build an interview-ready C++ news streaming system that runs on Linux/WSL and de
 - authenticated TCP client sessions;
 - non-blocking networking with raw POSIX sockets and `epoll`;
 - a length-prefixed binary protocol;
-- monotonically increasing news sequence numbers;
+- monotonically increasing news ids;
 - crash recovery through an append-only write-ahead log (WAL);
-- stream resumption from the last sequence received by a client;
-- fast replay of recent messages from a preallocated in-memory ring buffer;
+- stream resumption from the last news id received by a client;
+- fast replay of recent messages from an in-memory replay ring;
 - bounded memory use and explicit slow-client handling.
 
 The implementation will not use Boost, a networking framework, or a database.
@@ -19,16 +19,15 @@ The implementation will not use Boost, a networking framework, or a database.
 
 The first complete version is successful when it can:
 
-1. Start, recover all valid WAL records, and continue with the next sequence number.
+1. Start, recover all valid WAL records, and continue with the next news id.
 2. Accept multiple non-blocking TCP clients through one `epoll` event loop.
 3. Authenticate a client before allowing subscription or replay.
 4. Publish each news item only after it has been appended to the WAL.
-5. Deliver live news in sequence-number order.
-6. Reconnect a client using its last received sequence number and replay every later item.
+5. Deliver live news in id order.
+6. Reconnect a client using its last received id and replay every later item.
 7. Serve recent replay from memory and older replay from the WAL.
-8. Survive a deliberately truncated or partially written final WAL record.
-9. Disconnect or throttle a client whose output queue exceeds a configured bound.
-10. Build and pass automated tests under WSL using CMake and CTest.
+8. Disconnect a client whose output queue exceeds a configured bound.
+9. Build and pass automated tests under WSL using CMake and CTest.
 
 TLS, distributed replication, user administration, and production-grade secret storage are explicitly outside the initial scope.
 
@@ -37,31 +36,34 @@ TLS, distributed replication, user administration, and production-grade secret s
 ### 3.1 Runtime components
 
 - **Main/event-loop thread**: owns the listening socket, all client sockets, session state, protocol parsing, replay scheduling, and live broadcast.
-- **News source**: initially a deterministic timer-driven generator. A Linux `timerfd` integrates it directly into `epoll` without another thread.
+- **News source**: a simple publisher thread generates deterministic demo titles every 20 seconds and wakes the event loop through an `eventfd`.
 - **WAL**: one append-only binary file. The event loop appends a complete record before making that news item visible to clients.
 - **Replay ring**: a fixed-capacity circular array holding the latest decoded news records.
 - **Signal handling**: a `signalfd` registered with `epoll` enables orderly shutdown without asynchronous signal-handler logic.
 
-This single-owner design avoids locks in the socket and session hot path. If synchronous WAL latency later proves unacceptable, Phase 8 moves persistence to a dedicated writer thread connected with bounded SPSC queues and an `eventfd`; the event loop still publishes only after receiving a durability acknowledgement.
+The event loop owns sockets, sessions, ids, WAL appends, replay, and broadcast. The publisher thread only generates titles and notifies the server, keeping shared state small and easy to explain.
 
 ### 3.2 Data flow
 
 ```text
-timerfd/news source
+publisher thread
         |
         v
-assign sequence -> encode WAL record -> append/durability policy
+generate title -> eventfd wakes server event loop
+        |
+        v
+assign id -> encode WAL record -> append to WAL
         |                                      |
         | append succeeds                      | append fails
         v                                      v
 insert into replay ring -> broadcast       stop publishing,
 to authenticated live clients              report fatal error
 
-reconnecting client -> authenticate -> provide last_seen_seq
+reconnecting client -> authenticate -> provide last_seen_id
                                       |
                      +----------------+----------------+
                      |                                 |
-              sequence in ring                  sequence too old
+                id in ring                       id too old
                      |                                 |
               replay from memory                 scan/read WAL
                      +----------------+----------------+
@@ -86,24 +88,27 @@ News/
 |   |-- replay_ring.h
 |   `-- news_record.h
 |-- src/
+|   |-- binary_encoding.h
 |   |-- protocol.cc
 |   |-- session.cc
 |   |-- epoll_server.cc
+|   |-- news_publisher.cc
 |   |-- wal.cc
 |   |-- replay_ring.cc
 |   `-- server_main.cc
 |-- client/
+|   |-- news_client.h
+|   |-- news_client.cc
 |   `-- client_main.cc
 |-- tests/
 |   |-- protocol_test.cc
+|   |-- authenticator_test.cc
 |   |-- wal_test.cc
 |   |-- replay_ring_test.cc
 |   `-- integration_test.cc
-`-- scripts/
-    `-- demo_recovery.sh
 ```
 
-The sample client is part of the deliverable: it proves authentication, sequence tracking, reconnection, and replay without relying on external tools.
+The sample client is part of the deliverable: it proves authentication, id tracking, reconnection, and replay without relying on external tools.
 
 ## 5. Binary Protocol
 
@@ -113,19 +118,18 @@ TCP is a byte stream, so every application message uses an explicit frame:
 
 ```text
 FrameHeader (network byte order)
-  uint32 payload_length
-  uint16 protocol_version
+  uint32 body_length
   uint16 message_type
-Payload[payload_length]
+Body[body_length]
 ```
 
 Rules:
 
 - The header has a fixed encoded size; do not transmit C++ structs directly.
 - Integers are explicitly encoded/decoded in big-endian order.
-- `payload_length` excludes the frame header and is capped, initially at 64 KiB.
-- Unknown versions, unknown message types, malformed lengths, and invalid state transitions produce an error frame followed by disconnect.
-- The parser must support fragmented headers, fragmented payloads, and multiple frames in one `recv()` call.
+- `body_length` excludes the frame header and is capped at 64 KiB.
+- The demo protocol assumes valid message formats and keeps error handling intentionally simple.
+- The client receive loop supports multiple frames in one `recv()` call.
 
 ### 5.2 Initial message types
 
@@ -133,120 +137,99 @@ Rules:
 |---|---|---|
 | `AUTH_REQUEST` | Client to server | Username and password for the exercise |
 | `AUTH_RESULT` | Server to client | Authentication success or failure |
-| `SUBSCRIBE` | Client to server | Contains `last_seen_seq` |
-| `NEWS` | Server to client | Sequence, timestamp, topic, and body |
-| `HEARTBEAT` | Both | Detect idle or dead peers |
-| `ERROR` | Server to client | Protocol/session error code |
+| `SUBSCRIBE` | Client to server | Contains `last_seen_id` |
+| `NEWS` | Server to client | News id and title |
 
 `NEWS` payload:
 
 ```text
-uint64 sequence
-uint64 timestamp_ns
-uint16 topic_length
-uint32 body_length
-byte[] topic
-byte[] body
+uint64 id
+uint32 title_length
+byte[] title
 ```
 
-Lengths and maximum field sizes are validated before allocation or copying.
+The protocol uses the word `payload` in code, but conceptually this is the frame body.
 
 ### 5.3 Session state machine
 
 ```text
-CONNECTED -> AUTHENTICATED -> REPLAYING -> LIVE -> CLOSING
+CONNECTED -> AUTHENTICATED -> LIVE -> CLOSING
      |             |              |
-     +-------------+--------------+--> CLOSING on error/timeout
+     +-------------+--------------+--> CLOSING on error
 ```
 
 - Only `AUTH_REQUEST` is legal in `CONNECTED`.
 - Only `SUBSCRIBE` is legal in `AUTHENTICATED`.
-- Live news generated while a client is replaying is not interleaved incorrectly. The session captures a replay high-water mark, replays through it, then queues later live records in sequence order before entering `LIVE`.
 - Authentication uses a fixed configuration file for the exercise. Plaintext credentials are acceptable only on the local demo network; the README must state that production deployment requires TLS or challenge-response authentication and hashed secrets.
 
 ## 6. Persistence and Crash Recovery
 
 ### 6.1 WAL file format
 
-Start the file with a magic value and format version. Each record is self-validating:
+Each record is written in a compact binary format:
 
 ```text
-FileHeader:
-  magic[8], format_version, reserved
-
 Record:
-  uint32 record_length
-  uint32 crc32
-  uint64 sequence
-  uint64 timestamp_ns
-  uint16 topic_length
-  uint32 body_length
-  topic bytes
-  body bytes
+  uint64 id
+  uint32 title_length
+  title bytes
 ```
 
-The CRC covers the encoded record body, not `record_length` or the CRC field. WAL values use one documented byte order and are serialized field by field.
+Example for id `5` and title `"Hi"`:
+
+```text
+[00 00 00 00 00 00 00 05][00 00 00 02][48 69]
+```
+
+WAL values use the same documented big-endian byte order as the protocol and are serialized field by field.
 
 ### 6.2 Append policy
 
-- Open with `O_APPEND | O_CREAT | O_WRONLY | O_CLOEXEC`.
-- Fully encode a bounded record before calling `write()`.
-- Handle `EINTR` and partial writes.
+- Open the WAL in binary append mode.
+- Fully encode a bounded record before writing it.
 - Never broadcast a record if its append fails.
-- Provide two explicit durability modes:
-  - `append`: publish after the kernel accepts all bytes;
-  - `fdatasync`: call `fdatasync()` before publishing.
-- Default the correctness demo to `fdatasync`; benchmarks must state which mode they use.
 
-An append alone protects ordering and process-crash recovery but does not guarantee survival of sudden power loss. This distinction must be documented rather than hidden behind the word “durable.”
+The current version skips CRC/checksum and advanced durability modes to keep the implementation small and interview-explainable.
 
 ### 6.3 Startup recovery
 
 On startup:
 
-1. Validate the file header.
-2. Read records sequentially.
-3. Reject impossible lengths before reading payload data.
-4. Validate CRC and strict sequence continuity.
-5. Add valid records to the replay ring, naturally retaining only the newest capacity.
-6. Record WAL offsets in a lightweight sequence-to-offset index for older replay.
-7. If the final record is incomplete or has a bad CRC, treat it as a torn tail and truncate to the last valid offset.
-8. Treat corruption in the middle of the file as fatal; do not silently skip it.
-9. Set `next_sequence = last_valid_sequence + 1`.
+1. Read records sequentially.
+2. Stop at the first incomplete record.
+3. Add recovered records to the replay ring, naturally retaining only the newest capacity.
+4. Set `next_id = last_valid_id + 1`.
 
-The in-memory WAL index may begin as one offset per record. If scale becomes relevant, use sparse checkpoints and scan forward from the nearest checkpoint.
+Older replay is implemented by scanning the WAL and returning records from the requested id.
 
 ## 7. Replay Ring and Resumption
 
-Use a preallocated circular array with power-of-two capacity. Because the event loop is the sole owner in the initial architecture, it does not need atomics or a concurrent queue.
+Use a fixed-capacity vector of recent records. Because the event loop is the sole owner, it does not need atomics or a concurrent queue.
 
 The ring exposes:
 
 - `append(NewsRecord)`;
-- `oldest_sequence()` and `newest_sequence()`;
-- lookup/iteration over an inclusive sequence range;
-- an explicit result for “requested sequence has been evicted.”
+- `oldest_id()`;
+- `From(first_id)`;
 
-On `SUBSCRIBE(last_seen_seq)`:
+On `SUBSCRIBE(last_seen_id)`:
 
-1. Reject `last_seen_seq` greater than the server's latest sequence.
-2. Compute `first_required = last_seen_seq + 1`, guarding overflow.
-3. Capture the current latest sequence as the replay high-water mark.
-4. If `first_required` is in the ring, enqueue the range from memory.
-5. Otherwise, read the older prefix from the WAL, then use the ring for the remaining range.
-6. Preserve exact sequence order and avoid duplicates at the WAL/ring boundary.
-7. Finish queued catch-up records before transitioning the session to live delivery.
+1. If `last_seen_id` is greater than the newest server id, treat the client as caught up.
+2. Otherwise compute `first_required = last_seen_id + 1`.
+3. If `first_required` is in the ring, enqueue records from memory.
+4. Otherwise, read records from the WAL.
+5. Then mark the client as live.
 
-Replay is incremental: each event-loop turn enqueues only up to a configured byte/record budget so that one reconnecting client cannot starve other clients.
+The replay path is intentionally simple and sends the missed records before live delivery.
 
 ## 8. Networking and Backpressure
 
 ### 8.1 Socket setup
 
 - Create non-blocking, close-on-exec sockets (`SOCK_NONBLOCK | SOCK_CLOEXEC`).
-- Set `SO_REUSEADDR`; make `TCP_NODELAY` configurable and enabled for latency tests.
+- Set `SO_REUSEADDR` and enable `TCP_NODELAY` by default.
 - Use `accept4()` until it returns `EAGAIN`.
-- Register the listener, clients, `timerfd`, and `signalfd` with `epoll`.
+- Register the listener, clients, publisher `eventfd`, and `signalfd` with `epoll`.
 - Start with level-triggered `epoll` for simpler correctness. Consider edge-triggered mode only after tests and measurements justify it.
 - Ignore `SIGPIPE` or send with `MSG_NOSIGNAL`.
 
@@ -258,7 +241,6 @@ Each session owns:
 - authentication and subscription state;
 - a FIFO transmit queue of immutable encoded frames or buffer slices;
 - an offset into the front frame for partial `send()` completion;
-- timestamps for authentication, idle, and heartbeat timeouts.
 
 Enable `EPOLLOUT` only when a session has pending bytes, and disable it when the queue drains.
 
@@ -266,19 +248,18 @@ Enable `EPOLLOUT` only when a session has pending bytes, and disable it when the
 
 Memory must remain bounded. Configure a maximum queued byte count per session. If adding another frame would exceed it:
 
-- send an error if space permits;
-- otherwise close immediately;
-- log the reason and last delivered sequence.
+- close the client session;
+- log the reason.
 
-The initial policy is disconnect rather than dropping news, because silently creating a sequence gap violates the protocol. The client can reconnect and resume later.
+The initial policy is disconnect rather than dropping news, because silently creating an id gap violates the protocol. The client can reconnect and resume later.
 
 ## 9. Implementation Milestones
 
 ### Milestone 0: Build skeleton
 
 - Add CMake targets for a core library, server, client, and tests.
-- Enable C++20, warnings, and debug sanitizers through build options.
-- Add a small configuration object for port, WAL path, ring capacity, limits, and durability mode.
+- Enable C++20 and compiler warnings.
+- Add a small configuration object for port, WAL path, ring capacity, and buffer limits.
 - Add a README with WSL build/run commands.
 
 **Exit condition:** clean build and one smoke test through CTest.
@@ -287,66 +268,60 @@ The initial policy is disconnect rather than dropping news, because silently cre
 
 - Implement endian-safe integer helpers.
 - Implement frame encoding without transmitting native structs.
-- Implement the incremental receive parser and all size checks.
-- Add tests for split input, coalesced frames, malformed sizes, unknown types, and round trips.
+- Implement simple frame encoding/decoding and frame-size helpers.
+- Add tests for round trips and multiple frames in one buffer.
 
-**Exit condition:** parser tests pass under AddressSanitizer and UndefinedBehaviorSanitizer.
+**Exit condition:** protocol tests pass.
 
 ### Milestone 2: WAL and recovery
 
-- Implement file/record encoding, CRC32, append, durability modes, and sequential recovery.
-- Build the sequence-to-offset index.
-- Add tests for empty WAL, normal recovery, restart sequence continuity, truncated header/body, bad tail CRC, middle corruption, and append failure.
+- Implement file/record encoding, append, sequential recovery, and replay from a requested id.
+- Add tests for append/recover and reading records from a given id.
 
-**Exit condition:** repeated crash/truncation simulations recover exactly the valid prefix.
+**Exit condition:** WAL tests pass and recovered ids continue from the last record.
 
 ### Milestone 3: Replay ring
 
-- Implement fixed-capacity storage and overwrite behavior.
-- Add boundary tests for empty, partially full, full, wrapped, evicted, and invalid ranges.
-- Integrate ring reconstruction into WAL recovery.
+- Implement fixed-capacity storage and simple oldest-record eviction.
+- Add boundary tests for empty, partially full, full, and evicted ranges.
 
-**Exit condition:** every requested retained range is returned once and in order.
+**Exit condition:** requested retained records are returned once and in order.
 
 ### Milestone 4: Non-blocking server and authentication
 
 - Implement listener creation, the `epoll` loop, accept/read/write draining, session cleanup, and signal-driven shutdown.
 - Implement the session state machine and fixed-file credential loading.
-- Add timeouts for clients that connect but never authenticate.
 
-**Exit condition:** multiple clients can authenticate concurrently; fragmented requests and partial writes work correctly.
+**Exit condition:** multiple clients can authenticate and subscribe concurrently.
 
 ### Milestone 5: Publishing and live delivery
 
-- Add `timerfd`-driven deterministic news generation.
-- Assign sequence numbers, append to WAL, update the ring, and broadcast in that exact order.
-- Complete the sample client so it persists or displays its last received sequence.
+- Add a publisher thread that generates deterministic news titles every 20 seconds.
+- Assign ids, append to WAL, update the ring, and broadcast in that exact order.
+- Complete the sample client so it displays its last received id.
 
-**Exit condition:** all connected clients observe the same gap-free sequence stream.
+**Exit condition:** all connected clients observe the same gap-free id stream.
 
 ### Milestone 6: Replay and reconnect
 
-- Implement memory replay, WAL replay, high-water-mark handling, and incremental replay budgets.
+- Implement memory replay, WAL replay, and high-water-mark handling.
 - Add reconnect support to the client.
 - Test disconnect/reconnect inside ring coverage and beyond ring coverage.
 
-**Exit condition:** a client reconnects after missing messages and receives each missing sequence exactly once before live delivery.
+**Exit condition:** a client reconnects after missing messages and receives each missing id exactly once before live delivery.
 
 ### Milestone 7: Fault handling and integration tests
 
 - Enforce all receive, transmit, and replay limits.
-- Test slow readers, abrupt disconnects, invalid credentials, malformed frames, stale/future resume values, WAL write failure, server kill/restart, and clean shutdown.
-- Add a reproducible recovery demo script.
+- Test abrupt disconnects, invalid credentials, stale/future resume values, WAL replay, server restart, and clean shutdown.
 
 **Exit condition:** integration tests prove bounded memory, ordered recovery, and continued service to healthy clients.
 
 ### Milestone 8: Measurement-driven optimization
 
 - Add latency histograms for append-to-send and replay throughput.
-- Benchmark `append` versus `fdatasync` durability.
 - Preallocate/reuse buffers and encoded live frames where profiling shows allocation pressure.
 - Consider `writev()`/`sendmsg()` batching.
-- If WAL calls dominate event-loop latency, add a dedicated persistence thread, bounded SPSC command/acknowledgement queues, and `eventfd` notification.
 - Consider CPU affinity and edge-triggered `epoll` only after correctness remains covered by tests.
 
 **Exit condition:** benchmark results and architecture trade-offs are documented; optimizations are supported by measurements.
@@ -355,25 +330,24 @@ The initial policy is disconnect rather than dropping news, because silently cre
 
 ### Unit tests
 
-- Protocol encode/decode and incremental parsing.
-- WAL serialization, CRC, append, scan, and truncation recovery.
+- Protocol encode/decode and frame-size helpers.
+- WAL serialization, append, recovery, and replay from id.
 - Ring wraparound and range retrieval.
-- Session state transitions and illegal-message handling.
+- Session read/write behavior.
 
 ### Integration tests
 
 - Start the server on an ephemeral port and connect real TCP clients.
 - Authenticate, subscribe from zero, and validate ordered news.
 - Disconnect, allow publication to continue, reconnect, and validate replay.
-- Restart the server with the same WAL and validate sequence continuation.
-- Force a torn WAL tail and validate prefix recovery.
+- Restart the server with the same WAL and validate id continuation.
 - Keep one client from reading while another remains healthy.
 - Send frames one byte at a time and several frames in one write.
 
 ### Tooling
 
-- Debug builds: `-Wall -Wextra -Wpedantic -Wconversion` plus ASan/UBSan.
-- Race checking after introducing any worker thread: ThreadSanitizer in a separate build.
+- Debug builds: `-Wall -Wextra -Wpedantic -Wconversion`.
+- Race checking can be added later with ThreadSanitizer if the concurrency model grows.
 - System-call inspection: `strace`.
 - CPU and allocation profiling: `perf` and an appropriate heap profiler if needed.
 - Network robustness: loopback tests plus optional `tc netem` latency/loss testing.
@@ -383,10 +357,10 @@ The initial policy is disconnect rather than dropping news, because silently cre
 - Validate configuration before opening the listening socket.
 - Apply restrictive permissions to the WAL and credential file.
 - Never log passwords or raw authentication payloads.
-- Log connection ID, state transition, replay range, disconnect reason, and last delivered sequence.
+- Log connection ID, replay range, disconnect reason, and last delivered id.
 - Use structured, rate-limited logs outside the send/receive hot path where practical.
 - Exit on unrecoverable WAL corruption or append failure rather than serving data that is not recoverable.
-- Document maximum frame size, ring capacity, output-queue limit, timeout values, and durability mode.
+- Document maximum frame size, ring capacity, and output-queue limit.
 
 ## 12. Interview Demonstration
 
@@ -394,12 +368,12 @@ The final demonstration should be short and observable:
 
 1. Build and run all tests.
 2. Start the server and two authenticated clients.
-3. Show both clients receiving identical increasing sequences.
+3. Show both clients receiving identical increasing ids.
 4. Stop one client while the server continues publishing.
 5. Reconnect it and show missing records replayed before live records.
-6. Kill the server ungracefully, restart it with the same WAL, and show sequence continuation.
-7. Explain the append-before-publish invariant, torn-tail recovery, ring-to-WAL fallback, and slow-client bound.
-8. Present benchmark numbers with the durability mode stated explicitly.
+6. Stop and restart the server with the same WAL, then show id continuation.
+7. Connect a client from id `0` and show WAL replay.
+8. Explain the append-before-publish invariant, ring-to-WAL fallback, and slow-client bound.
 
 ## 13. Recommended Build Order
 
@@ -407,4 +381,4 @@ Implement Milestones 0 through 7 sequentially. Commit or checkpoint after every 
 
 The core invariant throughout the implementation is:
 
-> A sequence becomes visible to a client only after its complete WAL record has been accepted under the configured durability policy, and every client observes sequences in strictly increasing order.
+> A news id becomes visible to a client only after its complete WAL record has been appended, and every client observes ids in strictly increasing order.

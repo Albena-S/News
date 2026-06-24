@@ -12,7 +12,6 @@ namespace news {
 enum class SessionState {
   kConnected,
   kAuthenticated,
-  kReplaying,
   kLive,
   kClosing,
 };
@@ -30,14 +29,18 @@ struct IoResult {
   int error_number{0};
 };
 
+/**
+ * Stores the state and buffers for one connected client.
+ *
+ * A session owns the client socket, keeps received bytes until the server
+ * decodes them, and queues encoded frames until the socket is ready to send.
+ */
 class Session {
  public:
   Session(int fd, std::size_t receive_capacity,
           std::size_t max_queued_bytes);
   ~Session();
 
-  Session(const Session&) = delete;
-  Session& operator=(const Session&) = delete;
   Session(Session&& other);
   Session& operator=(Session&& other);
 
@@ -48,7 +51,6 @@ class Session {
   int fd() const;
   SessionState state() const;
   bool has_pending_output() const;
-  std::size_t queued_bytes() const;
   const std::vector<std::byte>& received_data() const;
   std::size_t received_offset() const;
   std::size_t received_size() const;

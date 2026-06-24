@@ -87,13 +87,13 @@ void EpollServer::Run() {
         const auto fd = events[static_cast<std::size_t>(index)].data.fd;
         const auto event_flags = events[static_cast<std::size_t>(index)].events;
 
-        if (fd == listener_fd_) {
+        if (fd == listener_fd_) { // new client is waiting on the listening socket.
           AcceptConnections();
-        } else if (fd == signal_fd_) {
+        } else if (fd == signal_fd_) { // SIGINT or SIGTERM was received.
           HandleSignal();
-        } else if (fd == publisher_.event_fd()) {
+        } else if (fd == publisher_.event_fd()) { // The publisher thread generated one or more titles.
           HandlePublisherEvent();
-        } else {
+        } else { // Otherwise this is an already connected client socket.
           HandleSessionEvent(fd, event_flags);
         }
       }
@@ -104,10 +104,6 @@ void EpollServer::Run() {
   }
 
   std::cout << "news server stopped\n";
-}
-
-std::uint16_t EpollServer::port() const {
-  return bound_port_;
 }
 
 void EpollServer::CreateListener() {
@@ -157,7 +153,7 @@ void EpollServer::CreateEpoll() {
 void EpollServer::CreateSignalFd() {
   sigset_t mask{};
   ::sigemptyset(&mask);
-  ::sigaddset(&mask, SIGINT);
+  ::sigaddset(&mask, SIGINT); //shutdown signals we want to receive through signal_fd_
   ::sigaddset(&mask, SIGTERM);
 
   if (::sigprocmask(SIG_BLOCK, &mask, nullptr) < 0) {
@@ -212,15 +208,13 @@ void EpollServer::AcceptConnections() {
       ThrowSystemError("accept4");
     }
 
-    if (config_.tcp_no_delay) {
-      const int enabled = 1;
-      if (::setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
-                       sizeof(enabled)) < 0) {
-        std::cerr << "closing client: failed to set TCP_NODELAY: "
-                  << std::strerror(errno) << '\n';
-        ::close(client_fd);
-        continue;
-      }
+    const int enabled = 1;
+    if (::setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
+                     sizeof(enabled)) < 0) {
+      std::cerr << "closing client: failed to set TCP_NODELAY: "
+                << std::strerror(errno) << '\n';
+      ::close(client_fd);
+      continue;
     }
 
     Session session(client_fd, config_.receive_buffer_bytes,

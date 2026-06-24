@@ -9,6 +9,12 @@
 
 namespace news {
 
+/**
+ * Fixed-size in-memory cache of the most recent news records.
+ *
+ * It gives reconnecting clients a fast way to receive recent missed records
+ * without reading the WAL when the requested id is still in memory.
+ */
 class ReplayRing {
  public:
   ReplayRing(std::size_t capacity);
