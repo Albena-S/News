@@ -1,31 +1,58 @@
 # State of the Art Study: C++ TCP News Server
 
-This document surveys the open-source C++ ecosystem for patterns, libraries, and reference implementations relevant to our task: **a TCP news retrieval server with authentication, reconnection after crash, and stream resumption from the last received message.**
+This document surveys the open-source C++ ecosystem for patterns, libraries, and reference implementations relevant to the task: **a TCP news retrieval server with authentication, reconnection after crash, and stream resumption from the last received message.**
+
+Before implementing, I focused the research on the main technical questions of the exercise:
+
+- how to structure a TCP server in C++ without relying on a large networking framework;
+- how to authenticate a client before allowing it to subscribe;
+- how to keep a stream ordered so a client can resume from the last message received;
+- how to persist published messages so the server can recover after restart;
+- how to keep recent messages available in memory for fast replay.
+
+I first looked at repositories related to financial streaming, persistence, and networking. Some were useful as comparison points, while others directly influenced the final architecture. The most relevant references were the ones connected to non-blocking TCP servers, trading-style replay, append-only logs, binary protocols, and bounded replay buffers.
 
 ---
 
-## 1. Your Suggested Repos
+## 1. Initial Repositories Considered
 
 ### [MoQuant/StreamStockData](https://github.com/MoQuant/StreamStockData)
-- **Status**: The repo appears to be private, deleted, or renamed. It could not be accessed.
-- **Context**: The MoQuant GitHub org is associated with quantitative finance C++ projects and a YouTube channel. It likely contained WebSocket or REST-based stock data streaming code with JSON parsing.
-- **Takeaway**: Unavailable for analysis, but the MoQuant ecosystem generally uses `libcurl`, `nlohmann/json`, and simple networking patterns.
+
+I considered this repository because it is related to real-time financial data streaming, which is close to the idea of a continuously updated news feed.
+
+The project uses a WebSocket client connected to Alpaca's market-data stream. The relevant parts are:
+
+- `cpprest/ws_client.h` for WebSocket communication;
+- `boost::property_tree` for JSON parsing;
+- API key and secret authentication;
+- a subscription message for selected stock tickers;
+- a continuous receive loop that parses trade updates and stores prices/volumes by ticker.
+
+The exact technology is different from this exercise, because the requested project is a TCP server rather than a WebSocket market-data client. Still, it was useful to compare the general streaming flow:
+
+- authenticate first;
+- subscribe to a stream;
+- continuously receive messages;
+- decode each message;
+- update in-memory state.
+
+This helped clarify that the final project should use a custom TCP server and a simple binary protocol instead of building around an external WebSocket/JSON API.
 
 ### [onkar69483/Personal-Finance-Management-Cpp](https://github.com/onkar69483/Personal-Finance-Management-Cpp)
-- **What it is**: A beginner-level, single-file (`main.cpp`) console app for tracking personal finances.
-- **Architecture**: Monolithic, menu-driven, OOP with `Transaction` classes, `std::vector` for storage.
-- **Persistence**: Uses `std::ofstream` / `std::ifstream` to save/load data as text files.
-- **Relevance to our project**:
 
-| Aspect | Useful? | Notes |
-|---|---|---|
-| File-based save/load | ⭐⭐ Marginal | The `fstream` pattern could inspire a basic persistence layer, but lacks atomicity and crash safety |
-| OOP class design | ⭐ Low | Simple `Transaction` class could loosely inspire a `NewsMessage` struct |
-| Networking | ❌ None | No sockets, no TCP |
-| Authentication | ❌ None | No login system |
-| Crash recovery | ❌ None | No WAL, no journaling |
+I considered this repository as a simple example of C++ file-based persistence.
 
-- **Takeaway**: This repo is useful only as a very simple example of file-based state persistence in C++. Everything else must come from other sources.
+It is a beginner-level console application using classes, `std::vector`, and `std::ofstream` / `std::ifstream` to save and load data.
+
+The useful part was mostly comparative. It shows basic file persistence, but it does not address the main requirements of this project:
+
+- no TCP server;
+- no authentication step;
+- no stream subscription;
+- no replay from the last received message;
+- no crash-recovery model.
+
+The conclusion from this comparison was that simple save/load files are not enough. The server needs an append-only log pattern, where records are written as they are published and can be replayed on restart.
 
 ---
 
